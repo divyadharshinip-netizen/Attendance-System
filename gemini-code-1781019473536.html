@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Attendance System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f4f7f6;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h2 { margin-top: 0; color: #333; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:hover { background-color: #0056b3; }
+        input[type="file"] { display: none; }
+        .file-label {
+            display: block;
+            text-align: center;
+            background: #28a745;
+            color: white;
+            padding: 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+        .status { font-weight: bold; margin: 10px 0; color: #666; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+            font-size: 14px;
+        }
+        th { background-color: #f2f2f2; }
+        img.thumb { width: 50px; height: 50px; object-fit: cover; border-radius: 4px; }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .button-group button {
+            flex: 1;
+        }
+        .export-btn {
+            background-color: #28a745;
+        }
+        .export-btn:hover {
+            background-color: #218838;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.min.js"></script>
+</head>
+<body>
+
+    <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; padding: 30px 20px; text-align: center; border-radius: 8px; margin-bottom: 20px;">
+        <h1 style="margin: 0 0 10px 0; font-size: 28px;">Rajalakshmi Engineering College</h1>
+        <h2 style="margin: 0; font-size: 20px; font-weight: 300;">FIST INTERNSHIP 2026</h2>
+        <hr style="border: none; border-top: 2px solid rgba(255,255,255,0.3); margin: 15px 0;">
+        <h3 style="margin: 10px 0; font-size: 18px; color: #ffd700;">ATTENDANCE RECORD</h3>
+    </div>
+
+    <div class="card">
+        <h2>Capture Attendance</h2>
+        <p>Please allow GPS access and take a photo to check in.</p>
+        
+        <label for="camera-input" class="file-label">📸 Open Camera & Take Photo</label>
+        <input type="file" id="camera-input" accept="image/*" capture="user">
+        
+        <div id="status" class="status">Status: Waiting for photo...</div>
+        <button id="submit-btn" disabled>Submit Attendance</button>
+    </div>
+
+    <div class="card">
+        <h2>Attendance Log (Date-Wise)</h2>
+        <div class="button-group">
+            <button id="export-btn" class="export-btn">📊 Export to Excel</button>
+            <button id="clear-btn" style="background-color: #dc3545;">🗑️ Clear All</button>
+        </div>
+        <table id="attendance-table">
+            <thead>
+                <tr>
+                    <th>Date/Time</th>
+                    <th>Coordinates (GPS)</th>
+                    <th>Photo</th>
+                </tr>
+            </thead>
+            <tbody id="log-body">
+                </tbody>
+        </table>
+    </div>
+
+    <script>
+        const cameraInput = document.getElementById('camera-input');
+        const statusDiv = document.getElementById('status');
+        const submitBtn = document.getElementById('submit-btn');
+        const logBody = document.getElementById('log-body');
+        const exportBtn = document.getElementById('export-btn');
+        const clearBtn = document.getElementById('clear-btn');
+
+        let currentCoords = "Not Captured";
+        let currentPhotoBase64 = "";
+
+        // 1. Get GPS Location as soon as the page loads
+        window.addEventListener('load', () => {
+            getGPSLocation();
+            displayLogs();
+        });
+
+        function getGPSLocation() {
+            if (navigator.geolocation) {
+                statusDiv.innerText = "Fetching GPS location...";
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        currentCoords = `${position.coords.latitude.toFixed(5)}, ${position.coords.longitude.toFixed(5)}`;
+                        statusDiv.innerText = "GPS acquired. Please take a photo.";
+                    },
+                    (error) => {
+                        currentCoords = "GPS Denied/Unavailable";
+                        statusDiv.innerText = "Error: GPS access denied. You can still take a photo.";
+                        console.error(error);
+                    }
+                );
+            } else {
+                currentCoords = "GPS Not Supported";
+                statusDiv.innerText = "GPS is not supported by this browser.";
+            }
+        }
+
+        // 2. Handle Image Capture and convert to Base64
+        cameraInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    currentPhotoBase64 = event.target.result;
+                    statusDiv.innerText = `Photo captured! Ready to submit. (GPS: ${currentCoords})`;
+                    submitBtn.disabled = false; // Enable submit button
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // 3. Save to LocalStorage on Submit
+        submitBtn.addEventListener('click', () => {
+            const now = new Date();
+            const timestamp = now.toLocaleString(); // Date and Time
+            
+            const newRecord = {
+                timestamp: timestamp,
+                gps: currentCoords,
+                photo: currentPhotoBase64
+            };
+
+            // Get existing logs or initialize empty array
+            let logs = JSON.parse(localStorage.getItem('attendanceLogs')) || [];
+            logs.unshift(newRecord); // Add new record to the top
+
+            localStorage.setItem('attendanceLogs', JSON.stringify(logs));
+
+            // Reset UI
+            submitBtn.disabled = true;
+            cameraInput.value = "";
+            statusDiv.innerText = "Attendance recorded successfully! Fetching GPS for next entry...";
+            
+            getGPSLocation(); // Reset GPS for next scan
+            displayLogs();    // Refresh table
+        });
+
+        // 4. Display Logs on the Page
+        function displayLogs() {
+            logBody.innerHTML = "";
+            const logs = JSON.parse(localStorage.getItem('attendanceLogs')) || [];
+
+            if (logs.length === 0) {
+                logBody.innerHTML = `<tr><td colspan="3" style="text-align:center;">No records found.</td></tr>`;
+                return;
+            }
+
+            logs.forEach(record => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${record.timestamp}</td>
+                    <td><a href="https://www.google.com/maps?q=${record.gps}" target="_blank">${record.gps}</a></td>
+                    <td><img src="${record.photo}" class="thumb" alt="User Photo"></td>
+                `;
+                logBody.appendChild(row);
+            });
+        }
+
+        // 5. Export to Excel
+        exportBtn.addEventListener('click', () => {
+            const logs = JSON.parse(localStorage.getItem('attendanceLogs')) || [];
+            
+            if (logs.length === 0) {
+                alert('No attendance records to export!');
+                return;
+            }
+
+            // Prepare data for Excel (without photos as they are base64)
+            const dataForExcel = logs.map(record => ({
+                'Date/Time': record.timestamp,
+                'GPS Coordinates': record.gps,
+                'Map Link': `https://www.google.com/maps?q=${record.gps}`
+            }));
+
+            // Create a new workbook
+            const ws = XLSX.utils.json_to_sheet(dataForExcel);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Attendance");
+
+            // Auto-adjust column widths
+            const colWidths = [
+                { wch: 20 }, // Date/Time
+                { wch: 25 }, // GPS Coordinates
+                { wch: 35 }  // Map Link
+            ];
+            ws['!cols'] = colWidths;
+
+            // Download the file
+            const fileName = `Attendance_${new Date().toISOString().slice(0, 10)}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+
+            alert(`✅ Attendance exported successfully as ${fileName}`);
+        });
+
+        // 6. Clear All Records
+        clearBtn.addEventListener('click', () => {
+            if (confirm('⚠️ Are you sure you want to delete all attendance records? This cannot be undone.')) {
+                localStorage.removeItem('attendanceLogs');
+                displayLogs();
+                statusDiv.innerText = "All records cleared.";
+            }
+        });
+    </script>
+</body>
+</html>
